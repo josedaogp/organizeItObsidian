@@ -5,22 +5,23 @@ export default class MeetingPlugin extends Plugin {
     public categories: string[] = [];
     public selectedCategory: string = ""; // Categoría seleccionada por defecto
     public selectedFolderPath: string = ""; // Carpeta base de la categoría seleccionada
-    private templatesFolder: string = "Plantillas";  // La carpeta donde están las plantillas
+    public templatesFolder: string = "";  // La carpeta donde están las plantillas
 
     async onload() {
-        // Cargar las categorías guardadas en la configuración
-        const savedCategories = this.loadSettings().categories;
-        if (savedCategories && savedCategories.length > 0) {
-            this.categories = savedCategories;
-            this.selectedCategory = this.categories[0]; // Selecciona la primera categoría por defecto
-            this.selectedFolderPath = this.selectedCategory; // Asigna la ruta base según la categoría seleccionada
-        } else {
-            // Si no hay categorías configuradas, asignar un valor predeterminado
-            this.categories = ["Reuniones", "Personas", "Proyectos"];
-            this.selectedCategory = this.categories[0];
-            this.selectedFolderPath = this.selectedCategory;
+        // Cargar las configuraciones guardadas
+        const savedSettings = await this.loadSettings();
+        
+        // Cargar la carpeta de plantillas desde la configuración
+        const savedTemplateFolder = savedSettings.templatesFolder;
+        if (savedTemplateFolder) {
+            this.templatesFolder = savedTemplateFolder;
         }
-
+    
+        // Asignar las configuraciones cargadas
+        this.categories = savedSettings.categories;
+        this.selectedCategory = savedSettings.selectedCategory;
+        this.templatesFolder = savedSettings.templatesFolder;
+    
         // Registra los comandos para cada categoría
         this.categories.forEach((category) => {
             this.addCommand({
@@ -29,13 +30,14 @@ export default class MeetingPlugin extends Plugin {
                 callback: async () => this.createNoteForCategory(category),
             });
         });
-
+    
         // Verificar si la carpeta base existe, si no, crearla automáticamente
         await this.checkAndCreateFolder(this.selectedFolderPath);
-
+    
         // Crear una nueva página de configuración
         this.addSettingTab(new MeetingSettingTab(this.app, this));
     }
+    
 
     // Mostrar el selector de carpetas
     async selectFolder(folders: string[]): Promise<string | null> {
@@ -52,6 +54,37 @@ export default class MeetingPlugin extends Plugin {
             modal.open();
         });
     }
+
+    // Función para actualizar los comandos de las categorías
+    public updateCategoryCommands(deletedCategory?: string) {
+        console.log("Categorías antes de actualizar: ", this.categories);
+
+        // Si se proporciona 'deletedCategory', eliminar solo el comando asociado a esa categoría
+        if (deletedCategory) {
+            const commandId = `create-${deletedCategory.toLowerCase()}`;
+            this.removeCommand(commandId);  // Eliminar el comando de la categoría eliminada
+            console.log(`Comando para ${deletedCategory} eliminado.`);
+        } else {
+            // Si no se proporciona 'deletedCategory', eliminamos todos los comandos
+            this.categories.forEach((category) => {
+                const commandId = `create-${category.toLowerCase()}`;
+                this.removeCommand(commandId);  // Eliminar todos los comandos
+            });
+        }
+
+        // Volver a registrar los comandos para cada categoría
+        this.categories.forEach((category) => {
+            this.addCommand({
+                id: `create-${category.toLowerCase()}`, // ID único basado en el nombre de la categoría
+                name: `Crear ${category}`,
+                callback: async () => this.createNoteForCategory(category),
+            });
+        });
+
+        console.log("Categorías después de actualizar: ", this.categories);
+    }
+
+
 
     // Función para crear la nota con plantilla
     async createNoteForCategory(category: string) {
@@ -143,14 +176,35 @@ export default class MeetingPlugin extends Plugin {
     }
 
     // Guardar las configuraciones
-    public saveSettings(): void {
-        this.saveData({ categories: this.categories, category: this.selectedCategory, template: '' });
+    public async saveSettings(): Promise<void> {
+        await this.saveData({
+            categories: this.categories,             // Guardar las categorías
+            selectedCategory: this.selectedCategory,  // Guardar la categoría seleccionada
+            templatesFolder: this.templatesFolder,    // Guardar la carpeta de plantillas
+        });
     }
+
 
     // Cargar las configuraciones
     private loadSettings(): any {
-        return this.loadData() || { categories: this.categories, category: this.selectedCategory, template: '' };
+        // Cargar la configuración guardada
+        const savedSettings = this.loadData();
+
+        console.log("Configuración guardada:", savedSettings);
+        // Si no hay configuraciones guardadas, usar las predeterminadas
+        if (!savedSettings) {
+            return {
+                categories: [],  // Categorías predeterminadas
+                selectedCategory: "",                        // Categoría seleccionada predeterminada
+                templatesFolder: "",                                  // Carpeta de plantillas predeterminada
+            };
+        }
+
+        return savedSettings;
     }
+
+
+
 
     // Verificar si la carpeta existe, y si no, la crea
     async checkAndCreateFolder(folderPath: string) {
@@ -305,42 +359,80 @@ class MeetingSettingTab extends PluginSettingTab {
         super(app, plugin);
         this.plugin = plugin;
     }
+    
 
     display(): void {
         const { containerEl } = this;
 
+        // Limpiar el contenedor de configuraciones para evitar duplicaciones
+        containerEl.empty();  // Esto eliminará todos los elementos previos del contenedor
+
+        // Título de la configuración
         containerEl.createEl('h2', { text: 'Configuración de categorías' });
 
         // Mostrar categorías en un contenedor
         const categoriesContainer = containerEl.createEl('div');
         categoriesContainer.createEl('h3', { text: 'Categorías' });
 
+        // Mostrar las categorías definidas en el plugin
         this.plugin.categories.forEach((category, index) => {
             new Setting(categoriesContainer)
                 .setName(category)
                 .addButton((button) =>
                     button.setButtonText('Eliminar').onClick(() => {
+                        // Eliminar categoría
                         this.plugin.categories.splice(index, 1);
                         this.plugin.saveSettings();
+                        this.plugin.updateCategoryCommands(category);
                         this.display();  // Redibujar la configuración
                     })
                 );
         });
 
-        // Agregar un botón para añadir categorías
+        // Función para agregar categoría con un modal
         new Setting(containerEl)
-            .addButton((button) =>
-                button.setButtonText('Agregar Categoría').onClick(() => {
-                    const categoryName = prompt("Introduce el nombre de la nueva categoría:");
+        .addButton((button) =>
+            button.setButtonText('Agregar Categoría').onClick(() => {
+                // Crear el modal para ingresar el nombre de la categoría
+                const modal = new CategoryNameModal(this.plugin.app, (categoryName: string | null) => {
                     if (categoryName && !this.plugin.categories.includes(categoryName)) {
-                        this.plugin.categories.push(categoryName);
-                        this.plugin.saveSettings();
+                        this.plugin.categories.push(categoryName);  // Agregar nueva categoría
+                        this.plugin.saveSettings();  // Guardar las categorías
+                        this.plugin.updateCategoryCommands();  // Actualizar los comandos
                         this.display();  // Redibujar la configuración
+                    } else if (categoryName) {
+                        new Notice("La categoría ya existe.");
+                    }
+                });
+                modal.open();  // Mostrar el modal
+            })
+        );
+
+        // Título de la configuración de plantillas
+        containerEl.createEl('h2', { text: 'Configuración de Plantillas' });
+
+        // Selector de carpeta para plantillas
+        new Setting(containerEl)
+            .setName('Carpeta de Plantillas')
+            .setDesc('Selecciona la carpeta que contiene las plantillas para las notas')
+            .addText(text => text
+                .setPlaceholder('Introduce la ruta de la carpeta de plantillas')
+                .setValue(this.plugin.templatesFolder)  // Mostrar la carpeta de plantillas seleccionada
+                .onChange(async (value) => {
+                    // Verifica si la carpeta existe
+                    const folder = this.plugin.app.vault.getAbstractFileByPath(value);
+                    if (folder instanceof TFolder) {
+                        this.plugin.templatesFolder = value;
+                        this.plugin.saveSettings();
+                    } else {
+                        new Notice("La carpeta especificada no existe.");
                     }
                 })
             );
     }
 }
+
+
 
 
 class NoteNameModal extends Modal {
@@ -373,6 +465,48 @@ class NoteNameModal extends Modal {
             }
         });
 
+        const cancelButton = contentEl.createEl('button', { text: 'Cancelar' });
+        cancelButton.addEventListener('click', () => {
+            this.resolve(null);
+            this.close();
+        });
+    }
+}
+
+// Modal para ingresar el nombre de la nueva categoría
+class CategoryNameModal extends Modal {
+    resolve: (value: string | null) => void;
+
+    constructor(app: App, resolve: (value: string | null) => void) {
+        super(app);
+        this.resolve = resolve;
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+
+        contentEl.createEl('h2', { text: 'Introduce el nombre de la nueva categoría' });
+
+        // Crear campo de texto para el nombre de la categoría
+        const inputEl = contentEl.createEl('input', {
+            type: 'text',
+            placeholder: 'Nombre de la categoría',
+        });
+        inputEl.focus();
+
+        // Agregar un botón para confirmar el nombre
+        const button = contentEl.createEl('button', { text: 'Agregar' });
+        button.addEventListener('click', () => {
+            const name = inputEl.value.trim();
+            if (name) {
+                this.resolve(name);  // Resuelve la promesa con el nombre ingresado
+                this.close();
+            } else {
+                new Notice("El nombre de la categoría no puede estar vacío.");
+            }
+        });
+
+        // Agregar botón de cancelar
         const cancelButton = contentEl.createEl('button', { text: 'Cancelar' });
         cancelButton.addEventListener('click', () => {
             this.resolve(null);
