@@ -1,10 +1,11 @@
-import { Plugin, App, MarkdownView, Notice, Editor, Modal, Setting, PluginSettingTab, TFolder } from 'obsidian';
+import { Plugin, App, TFile ,MarkdownView, Notice, Editor, Modal, Setting, PluginSettingTab, TFolder } from 'obsidian';
 
 export default class MeetingPlugin extends Plugin {
     // Lista de categorías definidas por el usuario en la configuración
     public categories: string[] = [];
     public selectedCategory: string = ""; // Categoría seleccionada por defecto
     public selectedFolderPath: string = ""; // Carpeta base de la categoría seleccionada
+    private templatesFolder: string = "Plantillas";  // La carpeta donde están las plantillas
 
     async onload() {
         // Cargar las categorías guardadas en la configuración
@@ -52,9 +53,9 @@ export default class MeetingPlugin extends Plugin {
         });
     }
 
-    // Función para crear una nota en función de la categoría seleccionada
+    // Función para crear la nota con plantilla
     async createNoteForCategory(category: string) {
-        const folderPath = `${category}`;  // Usamos el nombre de la categoría como ruta base
+        const folderPath = `${category}`;
         const folders = await this.getSubfolders(folderPath);
 
         const selectedFolder = await this.selectFolder(folders);
@@ -74,15 +75,49 @@ export default class MeetingPlugin extends Plugin {
         }
 
         const filePath = `${fullFolderPath}/${noteName}.md`;
+
         try {
-            const file = await this.app.vault.create(filePath, `# ${noteName}\n\n`);
-            const template = this.loadSettings().template || "# Nota\n\n";
-            await this.app.vault.append(file, template);
+            const file = await this.app.vault.create(filePath ,"");  // Agregar el nombre como H1
+        
+            // Cargar la plantilla y agregarla sin el H1
+            const template = await this.loadTemplate(category);  
+            console.log("Plantilla:",template);
+            await this.app.vault.append(file, template);  // Añadir el contenido de la plantilla sin el H1 de la plantilla
+
             new Notice(`Nota '${noteName}' creada en ${fullFolderPath}`);
         } catch (error) {
             new Notice(`Error al crear la nota: ${error}`);
         }
     }
+
+
+    // Función para cargar la plantilla y eliminar el encabezado H1 de la plantilla si existe
+    private async loadTemplate(category: string): Promise<string> {
+        const templateName = `${category}.md`;  // El nombre de la plantilla podría ser el mismo que la categoría
+        const templatePath = `${this.templatesFolder}/${templateName}`;
+
+        try {
+            const templateFile = this.app.vault.getAbstractFileByPath(templatePath);
+            if (templateFile instanceof TFile) {
+                const templateContent = await this.app.vault.read(templateFile);
+
+                // Eliminar el encabezado H1 si está presente en la plantilla
+                // Esto reemplaza solo el primer H1 que aparece en la plantilla
+                const templateWithoutH1 = templateContent.replace(/^# .*\n/, ''); 
+                
+                // console.log("Plantilla:",templateWithoutH1)
+                return templateWithoutH1;  // Retorna la plantilla sin el encabezado H1
+            } else {
+                new Notice("No se encontró la plantilla para esta categoría.");
+                return "";  // Si no se encuentra la plantilla, retornar una cadena vacía
+            }
+        } catch (error) {
+            new Notice(`Error al cargar la plantilla: ${error}`);
+            return "";
+        }
+    }
+
+
 
     // Obtener las subcarpetas de la carpeta base de la categoría seleccionada
     async getSubfolders(folderPath: string): Promise<string[]> {
