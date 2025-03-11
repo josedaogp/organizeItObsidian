@@ -349,8 +349,6 @@ class FolderSelectModal extends Modal {
 }
 
 
-
-
 // Interfaz de configuración
 class MeetingSettingTab extends PluginSettingTab {
     plugin: MeetingPlugin;
