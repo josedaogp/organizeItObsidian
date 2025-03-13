@@ -2,6 +2,7 @@ import { PluginSettingTab, Setting, App, TFolder } from 'obsidian';
 import { CategoryNameModal } from '../modals/CategoryNameModal';
 import MeetingPlugin from '../MeetingPlugin';
 import { Notice } from 'obsidian';
+import { checkAndCreateFolder } from 'src/utils/FolderUtils';
 
 export class MeetingSettingTab extends PluginSettingTab {
     plugin: MeetingPlugin;
@@ -42,14 +43,23 @@ export class MeetingSettingTab extends PluginSettingTab {
         // Función para agregar categoría con un modal
         new Setting(containerEl)
             .addButton((button) =>
-                button.setButtonText('Agregar Categoría').onClick(() => {
+                button.setButtonText('Agregar Categoría').onClick(async () => {
                     // Crear el modal para ingresar el nombre de la categoría
-                    const modal = new CategoryNameModal(this.plugin.app, (categoryName: string | null) => {
+                    const modal = new CategoryNameModal(this.plugin.app, async (categoryName: string | null) => {
                         if (categoryName && !this.plugin.categories.includes(categoryName)) {
-                            this.plugin.categories.push(categoryName);  // Agregar nueva categoría
-                            this.plugin.saveSettings();  // Guardar las categorías
-                            this.plugin.updateCategoryCommands();  // Actualizar los comandos
-                            this.display();  // Redibujar la configuración
+                            // Agregar la categoría
+                            this.plugin.categories.push(categoryName);  
+                            // Guardar la categoría
+                            this.plugin.saveSettings();
+                            // Actualizar los comandos para la nueva categoría
+                            this.plugin.updateCategoryCommands();  
+
+                            // Crear la carpeta correspondiente si no existe
+                            const folderPath = categoryName;  // La carpeta se crea con el nombre de la categoría
+                            await checkAndCreateFolder(folderPath, this.plugin.app);
+
+                            // Redibujar la configuración
+                            this.display();  
                         } else if (categoryName) {
                             new Notice("La categoría ya existe.");
                         }
