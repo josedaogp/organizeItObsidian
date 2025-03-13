@@ -15,17 +15,27 @@ export class FolderSelectModal extends Modal {
         const { contentEl } = this;
         contentEl.createEl('h2', { text: 'Selecciona una carpeta' });
 
+        // Crear un contenedor para la lista de carpetas
         const listEl = contentEl.createEl('ul');
+        
+        // Mostrar las carpetas con su ruta relativa
         this.folders.forEach((folder, index) => {
             const itemEl = listEl.createEl('li');
-            itemEl.textContent = folder;
-            itemEl.setAttr("tabindex", "0");
+            itemEl.textContent = folder;  // Mostramos la carpeta con la ruta relativa
+            itemEl.setAttr("tabindex", "0");  // Permitir selección por teclado
 
+            // Agregar la clase "selected" al elemento seleccionado
+            if (index === this.selectedIndex) {
+                itemEl.addClass("selected");
+            }
+
+            // Manejar selección con clic
             itemEl.addEventListener('click', () => {
                 this.resolve(folder);
                 this.close();
             });
 
+            // Manejar selección con teclado (flechas y Enter)
             itemEl.addEventListener('keydown', (event: KeyboardEvent) => {
                 if (event.key === 'Enter') {
                     this.resolve(folder);
@@ -40,6 +50,7 @@ export class FolderSelectModal extends Modal {
             });
         });
 
+        // Agregar campo de búsqueda para seleccionar por teclado
         const searchInput = contentEl.createEl('input', { type: 'text', placeholder: 'Buscar carpeta...' });
         searchInput.addEventListener('input', () => {
             const filter = searchInput.value.toLowerCase();
@@ -49,6 +60,7 @@ export class FolderSelectModal extends Modal {
             });
         });
 
+        // Establecer foco en el primer elemento de la lista
         const firstItem = listEl.querySelectorAll('li')[this.selectedIndex];
         if (firstItem) {
             firstItem.focus();

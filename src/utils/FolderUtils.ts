@@ -4,20 +4,28 @@ export async function getSubfolders(folderPath: string, app: App): Promise<strin
     const folder = app.vault.getAbstractFileByPath(folderPath);
     if (folder && folder instanceof TFolder) {
         const subfolders: string[] = [];
+
+        // Agregamos "Raíz" si no está vacío
+        subfolders.push('Raíz');
+
         app.vault.getAllFolders().forEach(file => {
             if (file instanceof TFolder && file.path.startsWith(folderPath)) {
                 const relativePath = file.path.slice(folderPath.length + 1);
                 const parts = relativePath.split('/');
-                if (parts.length === 1 && !subfolders.includes(parts[0])) {
+
+                // Solo agregamos si es una subcarpeta válida y no vacía
+                if (parts.length === 1 && parts[0] !== '') {
                     subfolders.push(parts[0]);
                 }
             }
         });
-        subfolders.unshift('Raíz');
+
         return subfolders;
     }
     return [];
 }
+
+
 
 export async function checkAndCreateFolder(folderPath: string, app: App) {
     const folder = app.vault.getAbstractFileByPath(folderPath);
